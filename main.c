@@ -32,7 +32,7 @@ void gameLoop() {
 }
 
 void teardown() {
-	printf("All done./n");
+	printf("All done.\n");
 }
 
 void displayWorld() {
@@ -43,14 +43,13 @@ void acceptInput() {
 	printf("Enter a guess: ");
 
 	char input[20];
-	fgets(input, 20, stdin);
-
-	// strip \r\n from the input
-	input[strchr(input, '\r') - input] = '\0';
-	input[strchr(input, '\n') - input] = '\0';
+	fgets(input, sizeof(input), stdin);
 
 	// convert the input to uppercase for future handling
-	for (int i = 0; i < 20; i++) {
+	for (int i = 0; i < sizeof(input); i++) {
+		// remove carriage return and or line feed 
+		if (input[i] == '\r' || input[i] == '\n')
+			input[i] = '\0';
 		input[i] = toupper(input[i]);
 	}
 	printf("%s\n", input);
@@ -62,15 +61,15 @@ bool isDone() {
 
 void getLetterDistribution(char word[], int distribution[]) {
 	for (int i = 0; i < strlen(word); i++) {
-		distribution[word[i] - 65]++;	
+		distribution[word[i] - 65]++;
 	}
 }
 
 bool compareCounts(int candidate[], int bank[]) {
 	// if any letter in the candidate has more occurences than the bank,
 	// it cannot be made
-	for (int i = 0; i< 26; i++) {
-		if (candidate[i] > bank[i])
+	for (int i = 0; i < 26; i++) {
+		if (candidate[i] > bank[i]) 
 			return false;
 	}
 	return true;
