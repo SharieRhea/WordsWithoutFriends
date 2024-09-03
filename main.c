@@ -15,14 +15,21 @@ void acceptInput();
 bool isDone();
 char* getRandomWord(int);
 void findWords(char*);
+void getLetterDistribution(char*, int[]);
+void cleanUpGameListNodes();
+void cleanUpWordListNodes();
 
 // root node for the list of dictionary words
 struct WordListNode* dictionaryHead;
 // root node for list of game words
 struct GameListNode* gameHead;
+// the master word for the current game
+char* master;
 
 int main() {
 	int max = initialization();
+	master = getRandomWord(max);
+	findWords(master);
 	gameLoop();
 	teardown();
 	return 0;
@@ -49,12 +56,23 @@ int initialization() {
 		exit(1);
 	}
 
+	// clean the \r\n
+	for (int i = 0; i < sizeof(dictionaryHead->word); i++) {
+		if (dictionaryHead->word[i] == '\n' || dictionaryHead->word[i] == '\r')
+			dictionaryHead->word[i] = '\0';
+	}
+
 	int count = 1;
 	char* status;
 	struct WordListNode* previousNode = dictionaryHead;
 	do {
 		struct WordListNode* currentNode = malloc(sizeof(struct WordListNode));
 		status = fgets(currentNode->word, 30, file);
+		// clean the \r\n
+		for (int i = 0; i < sizeof(currentNode->word); i++) {
+			if (currentNode->word[i] == '\n' || dictionaryHead->word[i] == '\r')
+				currentNode->word[i] = '\0';
+		}
 		previousNode->next = currentNode;
 		previousNode = currentNode;
 		count++;
@@ -72,23 +90,51 @@ int initialization() {
 
 void gameLoop() {
 	while (!isDone()) {
-	displayWorld();
-	acceptInput();
+		displayWorld();
+		acceptInput();
 	}
 }
 
 void teardown() {
+	displayWorld();
+	cleanUpGameListNodes();
+	cleanUpWordListNodes();
 	printf("All done.\n");
 }
 
 void displayWorld() {
-	printf("---------------------");
+	// use the distribution of the master word to print its sorted letters
+	int distribution[26] = { 0 };
+	getLetterDistribution(master, distribution);
+	for (int i = 0; i < sizeof(distribution) / 4; i++) {
+		for (int j = 0; j < distribution[i]; j++) {
+			printf("%c ", i + 65);
+		}
+	}
+	printf("\n-------------------------\n");
+
+	// print each word if it has been found, hangman style otherwise
+	struct GameListNode* node = gameHead;
+	while (node != NULL) {
+		if (node->found) {
+			printf("FOUND: %s\n", node->word);
+		}
+		else {
+			int length = strlen(node->word);
+			for (int i = 0; i < length; i++) {
+				printf("_");	
+			}
+			printf(" (%d)\n", length);
+		}
+		node = node->next;
+	}
+	printf("\n");
 }
 
 void acceptInput() {
 	printf("Enter a guess: ");
 
-	char input[20];
+	char input[30];
 	fgets(input, sizeof(input), stdin);
 
 	// convert the input to uppercase for future handling
@@ -98,10 +144,23 @@ void acceptInput() {
 			input[i] = '\0';
 		input[i] = toupper(input[i]);
 	}
-	printf("%s\n", input);
+	
+	// compare to each word in game list
+	struct GameListNode* node = gameHead;
+	while (node != NULL) {
+		if (strcmp(input, node->word) == 0)
+			node->found = true;
+		node = node->next;
+	}
 }
 
 bool isDone() {
+	struct GameListNode* node = gameHead;
+	while (node != NULL) {
+		if (!node->found)
+			return false;
+		node = node->next;
+	}
 	return true;
 }
 
@@ -167,4 +226,22 @@ void findWords(char* master) {
 		}
 		dictionaryNode = dictionaryNode->next;
 	} while (dictionaryNode->next != NULL);
+}
+
+void cleanUpGameListNodes() {
+	struct GameListNode* node = gameHead;
+	while (node != NULL) {
+		struct GameListNode* nodeToFree = node;
+		node = node->next;
+		free(nodeToFree);
+	}
+}
+
+void cleanUpWordListNodes() {
+	struct WordListNode* node = dictionaryHead;
+	while (node != NULL) {
+		struct WordListNode* nodeToFree = node;
+		node = node->next;
+		free(nodeToFree);
+	}
 }
