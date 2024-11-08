@@ -1,3 +1,4 @@
+#include <asm-generic/socket.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <string.h>
@@ -10,14 +11,14 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#define PORT "8000"
+#define PORT "8001"
 #define BACKLOG 10
 
 char* rootpath;
 
 // forward declarations
 int createSocket();
-void* handleRequest(void* clientsocketfd);
+void* handleRequest(void*);
 
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
@@ -29,11 +30,13 @@ int main(int argc, char *argv[]) {
 
 	// attempt to set up the socket
 	int socketfd = createSocket();
+	printf("DEBUG: created socket %d\n", socketfd);
 
 	// infinite loop of accepting requests
 	while (1) {
 		struct sockaddr_storage clientaddr;
 		socklen_t clientlen;
+		printf("DEBUG: waiting for a connection...\n");
 		int clientsocketfd = accept(socketfd, (struct sockaddr*) &clientaddr, &clientlen);
 		if (clientsocketfd == -1) {
 			perror("accept error");
@@ -42,7 +45,11 @@ int main(int argc, char *argv[]) {
 
 		// create a new thread for the request
 		pthread_t id;
-		pthread_create(&id, NULL, handleRequest, &clientsocketfd);
+		if (pthread_create(&id, NULL, handleRequest, &clientsocketfd) != 0) {
+			perror("thread creation error");
+			return 1;
+		}
+		printf("DEBUG: created thread %ld for client id %d\n", id, clientsocketfd);
 	}
 }
 
@@ -69,6 +76,10 @@ int createSocket() {
 		exit(1);
 	}
 
+	// set the socket such that the socket may be reused immediately (useful for debugging)
+	int option = 1;
+	setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+
 	// bind
 	int bindstatus = bind(socketfd, serverinfo->ai_addr, serverinfo->ai_addrlen);
 	if (bindstatus == -1) {
@@ -79,7 +90,7 @@ int createSocket() {
 	// serverinfo is no longer needed, free it
 	freeaddrinfo(serverinfo);
 
-	// set up infinite listener
+	// set up listener
 	int listenstatus = listen(socketfd, BACKLOG);
 	if (listenstatus == -1) {
 		perror("listen error");
@@ -93,39 +104,50 @@ int createSocket() {
 // handle a request
 void *handleRequest(void* clientsocketfd) {
 	// receive the request
-	char* request = (char*) malloc(1024);
-	recv((long) clientsocketfd, request, sizeof request, 0);
+	char request[3000];
+	recv(*(int*) clientsocketfd, request, sizeof(request), 0);
+	printf("DEBUG: request received:\n%s\n", request);
+
 	// extract the path from the request
-	strtok(request, " ");
-	char* requestpath = strtok(request, " ");
+	char* savepointer = request;
+	strtok_r(savepointer, " ", &savepointer);
+	char* requestpath = strtok_r(savepointer, " ", &savepointer);
+
+	// printf("DEBUG: requestpath: %s\n", requestpath);
 	// prepare the full path by appending the request to the server's root path
-	char* path = (char*) malloc(sizeof(rootpath) + sizeof(requestpath));
-	strcat(path, rootpath);
-	strcat(path, requestpath);
+	char path[200];
+	sprintf(path, "%s%s", rootpath, requestpath);
+	printf("DEBUG: serving: %s\n", path);
 
 	// try to open the file and get info
 	int file = open(path, O_RDONLY);
 	if (file == -1) {
 		// the file couldn't be found, return a 404 error
+		printf("DEBUG: 404\n");
 		char* message = "HTTP/1.1 404 NOT FOUND\r\nContent-Length:26\r\n\r\nThat file does not exist.";
-		send((long) clientsocketfd, message, strlen(message) + 1, 0);
-		free(path);
+		printf("DEBUG: message\n%s\n", message);
+		send(*(int*) clientsocketfd, message, strlen(message), 0);
+		close(*(int*) clientsocketfd);
 		return NULL;
 	}
 
 	// file was found, get the contents and determine size
+	printf("DEBUG: 200\n");
 	struct stat stats;
 	fstat(file, &stats);
-	char* contents = (char*) malloc(stats.st_size);
-	read(file, contents, stats.st_size);
-	// prep the return message
-	char* message = (char*) malloc(50 + stats.st_size);
-	sprintf(message, "HTTP/1.1 200 OK\r\nContentLength:%ld\r\n\r\n%s", stats.st_size, contents);
-	send((long) clientsocketfd, message, strlen(message) + 1, 0);
+	char contents[stats.st_size];
+	int bytesread = read(file, contents, sizeof(contents));
+	contents[bytesread] = '\0';
+	close(file);
 
-	free(path);
-	free(contents);
-	free(message);
+	// prep the return message
+	char message[50 + stats.st_size];
+	sprintf(message, "HTTP/1.1 200 OK\r\nContentLength: %ld\r\n\r\n%s", stats.st_size, contents);
+	printf("DEBUG: message\n%s\n", message);
+	send(*(int*) clientsocketfd, message, strlen(message), 0);
+	
+	// close the connection with the client
+	close(*(int*) clientsocketfd);
 
 	return NULL;
 }
