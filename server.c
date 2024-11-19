@@ -151,15 +151,34 @@ void *handleRequest(void* clientsocketfd) {
 		displayWorld();
 		sprintf(path, "%s", "output.html");
 	}
-	else if(strcmp("wordswithoutfriends", strtok_r(requestpath, "/", &savepointer)) == 0) {
-		char* guess = savepointer;
-		if (strcmp("", guess) == 0) {
+	else {
+		savepointer = requestpath;
+		if (strcmp("/wordswithoutfriends?move", strtok_r(savepointer, "=", &savepointer)) == 0) {
+			char* move = savepointer;
+
+			// check to make sure a game has been started
+			if (gameHead == NULL) {
+				int max = initialization();
+				master = getRandomWord(max);
+				findWords(master);
+			}
+
+			acceptInput(move);
+			if (isDone()) {
+				int output = open("output.html", O_WRONLY | O_TRUNC);
+				if (output == -1) {
+					perror("Unable to open output.html");
+					exit(1);
+				}
+				char buffer[4096];
+				sprintf(buffer, "<html>\n\t<body>\n\t\t<p>Congrats! You solved it!\n\t\t<a href=\"wordswithoutfriends\">Another?</a>\n\t<body>\n<html>");
+				write(output, buffer, strlen(buffer));
+				close(output);
+			}
+			else 
+				displayWorld();
+			sprintf(path, "%s", "output.html");
 		}
-		else {
-			acceptInput(guess);			
-			displayWorld();
-		}
-		sprintf(path, "%s", "output.html");
 	}
 
 	// try to open the file and get info
@@ -257,7 +276,7 @@ void teardown() {
 
 void displayWorld() {
 	// open a file to store for ease
-	int output = open("output.html", O_WRONLY);
+	int output = open("output.html", O_WRONLY | O_TRUNC);
 	if (output == -1) {
 		perror("Unable to open output.html");
 		exit(1);
@@ -265,7 +284,6 @@ void displayWorld() {
 	char buffer[4096];
 	sprintf(buffer, "<html>\n\t<body>\n\t\t<p>");
 	// use the distribution of the master word to print its sorted letters
-	printf("DEBUG: master %s\n", master);
 	int distribution[26] = { 0 };
 	getLetterDistribution(master, distribution);
 	for (int i = 0; i < sizeof(distribution) / 4; i++) {
@@ -299,7 +317,7 @@ void displayWorld() {
 		}
 		node = node->next;
 	}
-	strcat(buffer, "\n\t<body>\n<html>");
+	strcat(buffer, "\n\t\t<form submit=\"wordswithoutfriends\"><input type=\"text\" name=move autofocus></input></form>\n\t<body>\n<html>");
 	strcat(buffer, "\0");
 	write(output, buffer, strlen(buffer));
 	close(output);
@@ -307,18 +325,21 @@ void displayWorld() {
 
 void acceptInput(char* input) {
 	// convert the input to uppercase for future handling
-	for (int i = 0; i < sizeof(input); i++) {
+	for (int i = 0; i < strlen(input); i++) {
 		// remove carriage return and or line feed 
 		if (input[i] == '\r' || input[i] == '\n')
 			input[i] = '\0';
 		input[i] = toupper(input[i]);
 	}
+	printf("DEBUG: accepting guess %s\n", input);
 	
 	// compare to each word in game list
 	struct GameListNode* node = gameHead;
 	while (node != NULL) {
-		if (strcmp(input, node->word) == 0)
+		if (strcmp(input, node->word) == 0) {
+			printf("DEBUG: word found %s\n", input);
 			node->found = true;
+		}
 		node = node->next;
 	}
 }
@@ -383,6 +404,7 @@ void findWords(char* master) {
 			// case where we are adding the first word
 			if (!firstWordInitialized) {
 				strcpy(gameHead->word, dictionaryNode->word);
+				gameHead->next = NULL;
 				firstWordInitialized = true;
 			}
 			// appending to linked list
