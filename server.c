@@ -141,7 +141,6 @@ void *handleRequest(void* clientsocketfd) {
 	// prepare the full path by appending the request to the server's root path
 	char path[200];
 	sprintf(path, "%s%s", rootpath, requestpath);
-	printf("DEBUG: serving: %s\n", path);
 
 	if (strcmp("/wordswithoutfriends", requestpath) == 0) {
 		// no guess, startup a game
@@ -171,9 +170,10 @@ void *handleRequest(void* clientsocketfd) {
 					exit(1);
 				}
 				char buffer[4096];
-				sprintf(buffer, "<html>\n\t<body>\n\t\t<p>Congrats! You solved it!\n\t\t<a href=\"wordswithoutfriends\">Another?</a>\n\t<body>\n<html>");
+				sprintf(buffer, "<html style=\"background: rgb(2, 0, 36); background: linear-gradient(rgb(2, 0, 36) 0%%, rgb(13, 61, 70) 100%%);\">\n\t<head><title>Words Without Friends</title></head>\n\t<body style=\"font-family: sans-serif; text-align: center; height: 100%%; color: white;\">\n\t\t<h1>Words Without Friends</h1>\n\t\t<p>Congrats! You solved it!\n\t\t<a href=\"wordswithoutfriends\">Another?</a>\n\t</body>\n</html>");
 				write(output, buffer, strlen(buffer));
 				close(output);
+				teardown();
 			}
 			else 
 				displayWorld();
@@ -268,10 +268,9 @@ int initialization() {
 }
 
 void teardown() {
-	displayWorld();
 	cleanUpGameListNodes();
 	cleanUpWordListNodes();
-	printf("All done.\n");
+	printf("DEBUG: teardown complete\n");
 }
 
 void displayWorld() {
@@ -282,7 +281,7 @@ void displayWorld() {
 		exit(1);
 	}
 	char buffer[4096];
-	sprintf(buffer, "<html>\n\t<body>\n\t\t<p>");
+	sprintf(buffer, "<html style=\"background: rgb(2, 0, 36); background: linear-gradient(rgb(2, 0, 36) 0%%, rgb(13, 61, 70) 100%%);\">\n\t<head><title>Words Without Friends</title></head>\n\t<body style=\"font-family: sans-serif; text-align: center; height: 100%%; color: white;\">\n\t\t<h1>Words Without Friends</h1>\n\t\t<p>");
 	// use the distribution of the master word to print its sorted letters
 	int distribution[26] = { 0 };
 	getLetterDistribution(master, distribution);
@@ -317,7 +316,7 @@ void displayWorld() {
 		}
 		node = node->next;
 	}
-	strcat(buffer, "\n\t\t<form submit=\"wordswithoutfriends\"><input type=\"text\" name=move autofocus></input></form>\n\t<body>\n<html>");
+	strcat(buffer, "\n\t\t<form submit=\"wordswithoutfriends\">\n\t\t\t<label for=\"move\">Make a guess:</label>\n\t\t\t<input type=\"text\" name=move autofocus></input>\n\t\t</form>\n\t</body>\n</html>");
 	strcat(buffer, "\0");
 	write(output, buffer, strlen(buffer));
 	close(output);
@@ -331,13 +330,11 @@ void acceptInput(char* input) {
 			input[i] = '\0';
 		input[i] = toupper(input[i]);
 	}
-	printf("DEBUG: accepting guess %s\n", input);
 	
 	// compare to each word in game list
 	struct GameListNode* node = gameHead;
 	while (node != NULL) {
 		if (strcmp(input, node->word) == 0) {
-			printf("DEBUG: word found %s\n", input);
 			node->found = true;
 		}
 		node = node->next;
